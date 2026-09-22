@@ -18,6 +18,9 @@ interface AssessmentWithRelations {
   max_score: number;
   type: string;
   status: string;
+  class_id: string;
+  subject_id: string;
+  academic_year_id: string;
   classes?: { name: string };
   subjects?: { name: string };
 }
@@ -53,12 +56,44 @@ export default function TeacherGradesPage() {
         const { data: teacher } = await supabase.from("teachers").select("id").eq("profile_id", user.id).maybeSingle();
         if (!teacher) { setLoading(false); return; }
 
+        // Get subject+class pairs from teacher_assignments
+        const { data: assignments } = await supabase
+          .from("teacher_assignments")
+          .select("subject_id, class_id")
+          .eq("teacher_id", teacher.id);
+
+        // Get subject+class pairs from schedules
+        const { data: schedules } = await supabase
+          .from("schedules")
+          .select("subject_id, class_id")
+          .eq("teacher_id", teacher.id);
+
+        // Combine into unique pairs
+        const pairKey = (s: string, c: string) => `${s}|${c}`;
+        const pairs = new Map<string, { subject_id: string; class_id: string }>();
+        for (const a of assignments ?? []) pairs.set(pairKey(a.subject_id, a.class_id), a);
+        for (const s of schedules ?? []) pairs.set(pairKey(s.subject_id, s.class_id), { subject_id: s.subject_id, class_id: s.class_id });
+
+        if (pairs.size === 0) { setAssessments([]); setLoading(false); return; }
+
+        // Fetch assessments matching any of these subject+class pairs
+        const pairList = Array.from(pairs.values());
+        const subjectIds = [...new Set(pairList.map((p) => p.subject_id))];
+        const classIds = [...new Set(pairList.map((p) => p.class_id))];
+
         const { data: asmts } = await supabase
           .from("assessments")
           .select("*, classes(name), subjects(name)")
+          .in("subject_id", subjectIds)
+          .in("class_id", classIds)
           .order("date", { ascending: false });
 
-        setAssessments((asmts ?? []) as AssessmentWithRelations[]);
+        // Filter to only those matching an exact pair (not just any subject with any class)
+        const filtered = (asmts ?? []).filter((a) =>
+          pairs.has(pairKey(a.subject_id, a.class_id))
+        ) as AssessmentWithRelations[];
+
+        setAssessments(filtered);
       } catch { /* ignore */ } finally { setLoading(false); }
     })();
   }, []);
@@ -69,9 +104,11 @@ export default function TeacherGradesPage() {
       const asmt = assessments.find((a) => a.id === selectedAssessment);
       if (!asmt) return;
 
+      // Get students enrolled in this assessment's class
       const { data: enrRows } = await supabase
         .from("enrollments")
         .select("student_id")
+        .eq("class_id", asmt.class_id)
         .eq("status", "active");
 
       const studentIds = (enrRows ?? []).map((e) => e.student_id);
@@ -106,6 +143,9 @@ export default function TeacherGradesPage() {
     if (!asmt) return;
     setSaving(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: teacher } = await supabase.from("teachers").select("id").eq("profile_id", user?.id ?? "").maybeSingle();
+
       for (const student of students) {
         const scoreStr = scoreInputs[student.id];
         if (scoreStr === undefined || scoreStr === "") continue;
@@ -114,13 +154,16 @@ export default function TeacherGradesPage() {
 
         const existing = grades[student.id];
         if (existing) {
-          await supabase.from("grades").update({ score, status: "submitted" }).eq("id", existing.id);
+          await supabase.from("grades").update({ score, status: "submitted", graded_by: user?.id ?? "" }).eq("id", existing.id);
         } else {
           await supabase.from("grades").insert({
             assessment_id: selectedAssessment,
             student_id: student.id,
+            academic_year_id: asmt.academic_year_id ?? "",
+            teacher_id: teacher?.id ?? null,
             score,
             status: "submitted",
+            graded_by: user?.id ?? "",
           });
         }
       }
@@ -138,7 +181,12 @@ export default function TeacherGradesPage() {
     <div>
       <PageHeader title="Saisie des notes" description="Saisir les notes des évaluations" />
       {assessments.length === 0 ? (
-        <Card className="p-6"><EmptyState title="Aucune évaluation" message="Aucune évaluation n'a été créée pour le moment." /></Card>
+        <Card className="p-6">
+          <EmptyState
+            title="Aucune évaluation"
+            message="Aucune évaluation n'est disponible pour les matières et classes qui vous sont affectées. Contactez l'administration pour vérifier vos affectations."
+          />
+        </Card>
       ) : (
         <div className="space-y-4">
           <Card className="p-4">

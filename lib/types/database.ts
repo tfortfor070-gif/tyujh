@@ -207,6 +207,19 @@ export interface Database {
           teacher_number: string;
           specialization: string | null;
           status: "active" | "inactive" | "on_leave";
+          civility: string | null;
+          first_name: string | null;
+          last_name: string | null;
+          email: string | null;
+          phone: string | null;
+          birth_date: string | null;
+          birth_place: string | null;
+          gender: string | null;
+          nationality: string | null;
+          marital_status: string | null;
+          address: string | null;
+          emergency_contact_name: string | null;
+          emergency_contact_phone: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -217,10 +230,42 @@ export interface Database {
           teacher_number: string;
           specialization?: string | null;
           status?: string;
+          civility?: string | null;
+          first_name?: string | null;
+          last_name?: string | null;
+          email?: string | null;
+          phone?: string | null;
+          birth_date?: string | null;
+          birth_place?: string | null;
+          gender?: string | null;
+          nationality?: string | null;
+          marital_status?: string | null;
+          address?: string | null;
+          emergency_contact_name?: string | null;
+          emergency_contact_phone?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["teachers"]["Insert"]>;
+      };
+      teacher_assignments: {
+        Row: {
+          id: string;
+          teacher_id: string;
+          subject_id: string;
+          class_id: string;
+          institution_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          teacher_id: string;
+          subject_id: string;
+          class_id: string;
+          institution_id: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["teacher_assignments"]["Insert"]>;
       };
       academic_years: {
         Row: {
@@ -1082,11 +1127,13 @@ export interface Database {
       current_teacher_id: { Args: Record<string, never>; Returns: string };
       current_academic_year_id: { Args: Record<string, never>; Returns: string };
       is_teacher_of_class: { Args: { p_class_id: string }; Returns: boolean };
+      is_teacher_of_subject_class: { Args: { p_subject_id: string; p_class_id: string }; Returns: boolean };
       perform_class_transfer: {
         Args: { p_enrollment_id: string; p_to_class_id: string; p_reason?: string };
         Returns: string;
       };
       generate_student_number: { Args: { p_institution_id: string }; Returns: string };
+      generate_teacher_number: { Args: { p_institution_id: string }; Returns: string };
       convert_applicant_to_student: { Args: { p_applicant_id: string }; Returns: string };
     };
     Enums: Record<string, never>;
